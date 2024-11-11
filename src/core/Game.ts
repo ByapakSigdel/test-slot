@@ -1,6 +1,7 @@
 import Loader from "./Loader";
 import PlayButton from "./PlayButton";
 import Background from "./Background";
+import BetButton from "./BetButton";
 import ReelsContainer from "./ReelsContainer";
 import Scoreboard from "./Scoreboard";
 import VictoryScreen from "./VictoryScreen";
@@ -11,6 +12,7 @@ export default class Game {
     public app: Application;
     private loader: Loader;
     private playBtn: PlayButton;
+    private betButton: BetButton;
     private reelsContainer: ReelsContainer;
     private scoreboard: Scoreboard;
     private victoryScreen: VictoryScreen;
@@ -71,20 +73,16 @@ export default class Game {
             if (currentSound && !currentSound.isPlaying) {
                 // Special handling for win sound
                 if (soundName === 'win') {
-                    // Clear any existing timeout
                     if (this.winSoundTimeout) {
                         clearTimeout(this.winSoundTimeout);
                         this.stopSound('win');
                     }
-                    
-                    // Play win sound and set timeout to stop it
                     sound.play(soundName, options);
                     this.winSoundTimeout = setTimeout(() => {
                         this.stopSound('win');
                         this.winSoundTimeout = null;
                     }, 3500); // Stop after 3.5 seconds
                 } else {
-                    // Normal handling for other sounds
                     sound.play(soundName, options);
                 }
             }
@@ -100,6 +98,58 @@ export default class Game {
             console.warn(`Error stopping sound ${soundName}:`, error);
         }
     }
+    
+    private createBetButton() {
+        this.betButton = new BetButton(this.app, this.handleBetChange.bind(this));
+        this.app.stage.addChild(this.betButton.container);
+    }
+
+    private handleBetChange(amount: number) {
+        const actualBet = this.scoreboard.setBet(amount);
+        if (actualBet !== amount) {
+            // If scoreboard rejected the bet amount, update bet button display
+            this.betButton.setCurrentBet(actualBet);
+        }
+    }
+
+    private handleStart() {
+        if (this.isSpinning) return;
+
+        const currentBet = this.betButton.getCurrentBet();
+        if (this.scoreboard.getMoney() >= currentBet) {
+            // Proceed with the spin
+            this.scoreboard.decrement(currentBet);
+            this.playBtn.setDisabled();
+            this.betButton.setEnabled(false);
+            this.isSpinning = true;
+
+            this.playSound('coin');
+            setTimeout(() => this.playSound('spin', { loop: true }), 300);
+
+            this.reelsContainer.spin()
+                .then((isWin: boolean) => {
+                    this.isSpinning = false;
+                    this.stopSound('spin');
+                    this.playSound('stop');
+                    this.processSpinResult(isWin);
+                });
+        } else {
+            console.log("Not enough money to place the bet");
+        }
+    }
+
+    private processSpinResult(isWin: boolean) {
+        if (isWin) {
+            setTimeout(() => this.playSound('win'), 300);
+            this.scoreboard.increment();
+            this.victoryScreen.show();
+        }
+
+        if (!this.scoreboard.outOfMoney) {
+            this.playBtn.setEnabled();
+            this.betButton.setEnabled(true);
+        }
+    }
 
     public async init() {
         await this.app.init({ width: 960, height: 536 });
@@ -109,6 +159,7 @@ export default class Game {
         this.createScene();
         this.createPlayButton();
         this.createReels();
+        this.createBetButton();
         this.createScoreboard();
         this.createVictoryScreen();
     }
@@ -136,56 +187,5 @@ export default class Game {
     private createVictoryScreen() {
         this.victoryScreen = new VictoryScreen(this.app);
         this.app.stage.addChild(this.victoryScreen.container);
-    }
-
-    handleStart() {
-        if (this.isSpinning) return;
-        
-        // Stop win sound if it's still playing from previous win
-        if (this.winSoundTimeout) {
-            clearTimeout(this.winSoundTimeout);
-            this.stopSound('win');
-            this.winSoundTimeout = null;
-        }
-        
-        this.isSpinning = true;
-        this.scoreboard.decrement();
-        this.playBtn.setDisabled();
-
-        this.playSound('coin');
-
-        setTimeout(() => {
-            if (this.isSpinning) {
-                this.playSound('spin', {
-                    loop: true
-                });
-            }
-        }, 300);
-
-        this.reelsContainer.spin()
-            .then((isWin: boolean) => {
-                this.isSpinning = false;
-                this.stopSound('spin');
-                this.playSound('stop');
-
-                setTimeout(() => {
-                    this.processSpinResult(isWin);
-                }, 200);
-            });
-    }
-
-    private processSpinResult(isWin: boolean) {
-        if (isWin) {
-            setTimeout(() => {
-                this.playSound('win');
-            }, 300);
-            
-            this.scoreboard.increment();
-            this.victoryScreen.show();
-        }
-
-        if (!this.scoreboard.outOfMoney) {
-            this.playBtn.setEnabled();
-        }
     }
 }

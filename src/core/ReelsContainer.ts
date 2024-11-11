@@ -22,7 +22,7 @@ export default class ReelsContainer {
     async spin() {
         // Overall time of spinning = shiftingDelay * this.reels.length
         //
-        const shiftingDelay = 500;
+        const shiftingDelay = 800;
         const start = Date.now();
         const reelsToSpin = [...this.reels];
 
