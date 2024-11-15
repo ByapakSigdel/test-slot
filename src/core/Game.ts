@@ -5,6 +5,7 @@ import BetButton from "./BetButton";
 import ReelsContainer from "./ReelsContainer";
 import Scoreboard from "./Scoreboard";
 import VictoryScreen from "./VictoryScreen";
+import PocketBase from "pocketbase";
 import { Application } from "pixi.js";
 import { sound } from "@pixi/sound";
 
@@ -16,72 +17,97 @@ export default class Game {
     private reelsContainer: ReelsContainer;
     private scoreboard: Scoreboard;
     private victoryScreen: VictoryScreen;
-    private spinSound: any;
     private isSpinning: boolean = false;
     private winSoundTimeout: NodeJS.Timeout | null = null;
+    private pb: PocketBase;
 
     constructor() {
         this.app = new Application();
+        this.pb = new PocketBase("https://byapak1.pockethost.io"); // Replace with your PocketBase URL
         this.initializeSounds();
+        this.handleAuthStore();
     }
 
     private initializeSounds() {
-        sound.add('spin', {
-            url: 'public/spin.mp3',
+        sound.add("spin", {
+            url: "public/spin.mp3",
             preload: true,
             loaded: (err, sound) => {
                 if (sound) {
                     sound.volume = 0.3;
                 }
-            }
+            },
         });
 
-        sound.add('stop', {
-            url: 'public/stop.mp3',
+        sound.add("stop", {
+            url: "public/stop.mp3",
             preload: true,
             loaded: (err, sound) => {
                 if (sound) {
                     sound.volume = 0.4;
                 }
-            }
+            },
         });
 
-        sound.add('coin', {
-            url: 'public/coin.mp3',
+        sound.add("coin", {
+            url: "public/coin.mp3",
             preload: true,
             loaded: (err, sound) => {
                 if (sound) {
                     sound.volume = 0.5;
                 }
-            }
+            },
         });
 
-        sound.add('win', {
-            url: 'public/win.mp3',
+        sound.add("win", {
+            url: "public/win.mp3",
             preload: true,
             loaded: (err, sound) => {
                 if (sound) {
                     sound.volume = 0.6;
                 }
-            }
+            },
         });
+    }
+
+    private async handleAuthStore() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const authToken = urlParams.get("authToken");
+            const userData = urlParams.get("userData");
+
+            if (authToken && userData) {
+                // Restore the authStore state
+                this.pb.authStore.save(authToken, JSON.parse(userData));
+                const user = this.pb.authStore.model;
+
+                if (user) {
+                    console.log(`Authenticated user: ${user.username}`);
+                } else {
+                    console.warn("No user found in authStore.");
+                }
+            } else {
+                console.error("Missing authToken or userData in the URL.");
+            }
+        } catch (error) {
+            console.error("Error handling authStore:", error);
+        }
     }
 
     private playSound(soundName: string, options: any = {}) {
         try {
             const currentSound = sound.find(soundName);
             if (currentSound && !currentSound.isPlaying) {
-                // Special handling for win sound
-                if (soundName === 'win') {
+                if (soundName === "win") {
                     if (this.winSoundTimeout) {
                         clearTimeout(this.winSoundTimeout);
-                        this.stopSound('win');
+                        this.stopSound("win");
                     }
                     sound.play(soundName, options);
                     this.winSoundTimeout = setTimeout(() => {
-                        this.stopSound('win');
+                        this.stopSound("win");
                         this.winSoundTimeout = null;
-                    }, 3500); // Stop after 3.5 seconds
+                    }, 3500);
                 } else {
                     sound.play(soundName, options);
                 }
@@ -98,7 +124,7 @@ export default class Game {
             console.warn(`Error stopping sound ${soundName}:`, error);
         }
     }
-    
+
     private createBetButton() {
         this.betButton = new BetButton(this.app, this.handleBetChange.bind(this));
         this.app.stage.addChild(this.betButton.container);
@@ -107,7 +133,6 @@ export default class Game {
     private handleBetChange(amount: number) {
         const actualBet = this.scoreboard.setBet(amount);
         if (actualBet !== amount) {
-            // If scoreboard rejected the bet amount, update bet button display
             this.betButton.setCurrentBet(actualBet);
         }
     }
@@ -117,22 +142,20 @@ export default class Game {
 
         const currentBet = this.betButton.getCurrentBet();
         if (this.scoreboard.getMoney() >= currentBet) {
-            // Proceed with the spin
             this.scoreboard.decrement(currentBet);
             this.playBtn.setDisabled();
             this.betButton.setEnabled(false);
             this.isSpinning = true;
 
-            this.playSound('coin');
-            setTimeout(() => this.playSound('spin', { loop: true }), 300);
+            this.playSound("coin");
+            setTimeout(() => this.playSound("spin", { loop: true }), 300);
 
-            this.reelsContainer.spin()
-                .then((isWin: boolean) => {
-                    this.isSpinning = false;
-                    this.stopSound('spin');
-                    this.playSound('stop');
-                    this.processSpinResult(isWin);
-                });
+            this.reelsContainer.spin().then((isWin: boolean) => {
+                this.isSpinning = false;
+                this.stopSound("spin");
+                this.playSound("stop");
+                this.processSpinResult(isWin);
+            });
         } else {
             console.log("Not enough money to place the bet");
         }
@@ -140,7 +163,7 @@ export default class Game {
 
     private processSpinResult(isWin: boolean) {
         if (isWin) {
-            setTimeout(() => this.playSound('win'), 300);
+            setTimeout(() => this.playSound("win"), 300);
             this.scoreboard.increment();
             this.victoryScreen.show();
         }
